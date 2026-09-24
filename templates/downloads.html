@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Descargar datasets{% endblock %}
+
+{% block content %}
+<div class="download-shell">
+  <div class="section-header">
+    <div>
+      <p class="eyebrow">Gestión de datasets</p>
+      <h2>Descargar datasets completos</h2>
+    </div>
+    <span class="status-pill">Acceso autorizado</span>
+  </div>
+
+  <div id="datasetList" class="dataset-list">
+    <p class="empty-state">Cargando datasets...</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/downloads.js?v=1"></script>
+{% endblock %}

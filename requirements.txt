@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-dotenv
+pydantic
+pymongo
+bcrypt
+PyJWT
+Pillow
+python-multipart
+minio

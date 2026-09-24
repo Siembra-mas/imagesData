@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Carga de Imágenes{% endblock %}
+
+{% block content %}
+<div class="upload-shell">
+  <div class="section-header">
+    <div>
+      <p class="eyebrow">Cargador de datasets</p>
+      <h2>Subir imágenes de entrenamiento</h2>
+    </div>
+    <span class="status-pill">Formatos: PNG · JPG · WEBP</span>
+  </div>
+
+  <div class="meta-grid">
+    <div class="mini-card">
+      <span class="mini-label">Estado</span>
+      <strong>Listo para subir</strong>
+    </div>
+    <div class="mini-card">
+      <span class="mini-label">Seguridad</span>
+      <strong>Sesión activa</strong>
+    </div>
+  </div>
+
+  <div class="card card-wide upload-card">
+    <div class="form-group dataset-type-group">
+      <label for="datasetType">Tipo de dataset</label>
+      <select id="datasetType" required>
+        <option value="" selected disabled>Cargando tipos...</option>
+      </select>
+      <small class="field-hint">Las imágenes se guardarán dentro de tu carpeta y del tipo seleccionado.</small>
+    </div>
+
+    <div class="form-group dataset-type-group">
+      <label for="datasetSubtype">Subtipo</label>
+      <select id="datasetSubtype" required disabled>
+        <option value="" selected disabled>Selecciona primero el tipo</option>
+      </select>
+    </div>
+
+    <div class="dropzone" id="dropzone">
+      <div class="dropzone-icon">⬆</div>
+      <span>Arrastra archivos aquí o haz clic para examinar</span>
+      <input type="file" id="fileInput" multiple accept="image/png, image/jpeg, image/webp" style="display: none;" />
+    </div>
+
+    <button id="btnUpload" class="btn-primary upload-button" style="margin-top: 1.5rem; opacity: 0.5;" disabled onclick="startUpload()">
+      Selecciona imágenes para subir
+    </button>
+
+    <button id="btnDownload" class="btn-secondary upload-button" style="margin-top: 0.75rem; display: none;" disabled onclick="downloadDataset()">
+      Descargar dataset seleccionado
+    </button>
+
+    <div class="status-list" id="statusList"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/uploader.js?v=7"></script>
+{% endblock %}

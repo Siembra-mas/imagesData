@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Dataset Platform{% endblock %}</title>
+
+  <!-- Favicon SVG integrado con la paleta de colores -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231d63d5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/><polyline points='17 8 12 3 7 8'/><line x1='12' y1='3' x2='12' y2='15'/></svg>">
+
+  <!-- Estilos y fuentes -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/styles.css?v=2">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="logo-wrap">
+      <div class="logo-mark">D</div>
+      <div class="logo">
+        <span>Dataset</span>Collector
+      </div>
+    </div>
+
+    <div class="user-menu">
+      {% if user %}
+        {% if role == "dataset_manager" %}
+          <a class="nav-link" href="/downloads">Descargar datasets</a>
+        {% endif %}
+        <span class="user-badge">
+          <span class="status-dot"></span>
+          {{ user }}
+        </span>
+        <button class="btn-sm" onclick="logout()">Cerrar sesión</button>
+      {% else %}
+        <span class="guest-label">Acceso restringido</span>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <span>Plataforma interna de recolección · almacenamiento seguro</span>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="/static/js/auth.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Iniciar Sesión - Dataset</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <style>
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at top left, rgba(37, 99, 235, 0.09), transparent 28%),
+                  radial-gradient(circle at bottom right, rgba(16, 185, 129, 0.08), transparent 22%),
+                  #f4f8ff;
+    }
+
+    .login-page {
+      width: min(100%, 420px);
+      padding: 1rem;
+    }
+
+    .login-card {
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid rgba(37, 99, 235, 0.12);
+      border-radius: 24px;
+      box-shadow: 0 24px 50px rgba(15, 23, 42, 0.08);
+      padding: 2rem 1.5rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: #0f172a;
+    }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #2563eb 0%, #10b981 100%);
+      color: white;
+      box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+    }
+
+    .login-card h2 {
+      text-align: center;
+      margin-bottom: 1.5rem;
+      font-size: 1.8rem;
+      letter-spacing: -0.04em;
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.45rem;
+      color: #334155;
+      font-weight: 600;
+      font-size: 0.92rem;
+    }
+
+    .form-group input {
+      width: 100%;
+      border: 1px solid rgba(148, 163, 184, 0.5);
+      border-radius: 12px;
+      padding: 0.8rem 0.9rem;
+      font-size: 1rem;
+      background: white;
+      color: #0f172a;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .form-group input:focus {
+      border-color: rgba(37, 99, 235, 0.7);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
+    }
+
+    .btn-primary {
+      width: 100%;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      color: white;
+      font-weight: 700;
+      padding: 0.85rem 1rem;
+      cursor: pointer;
+      margin-top: 0.6rem;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+
+    .btn-primary:hover {
+      opacity: 0.97;
+      transform: translateY(-1px);
+    }
+
+    .message {
+      min-height: 1.2rem;
+      margin-top: 0.8rem;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #475569;
+    }
+
+    .toggle {
+      margin-top: 1rem;
+      text-align: center;
+      color: #2563eb;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <div class="brand">
+        <div class="brand-mark">D</div>
+        <span>Dataset</span>
+      </div>
+
+      <h2 id="title">Iniciar Sesión</h2>
+
+      <div class="form-group">
+        <label for="username">Usuario</label>
+        <input type="text" id="username" autocomplete="off" placeholder="Ingresa tu usuario" />
+      </div>
+
+      <div class="form-group">
+        <label for="password">Contraseña</label>
+        <input type="password" id="password" placeholder="••••••••" />
+      </div>
+
+      <button id="btnSubmit" class="btn-primary" onclick="handleAuthSubmit()">Entrar</button>
+      <div class="message" id="msg"></div>
+
+      <div class="toggle" id="toggleBtn" onclick="toggleAuthMode()">
+        ¿No tienes cuenta? Regístrate aquí
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/auth.js"></script>
+</body>
+</html>

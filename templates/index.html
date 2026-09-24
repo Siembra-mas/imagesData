@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Carga de Dataset</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: #1e293b;
+      padding: 2rem;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 500px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    }
+    .dropzone {
+      border: 2px dashed #475569;
+      padding: 2.5rem 1.5rem;
+      border-radius: 8px;
+      text-align: center;
+      cursor: pointer;
+      margin-top: 1.5rem;
+      transition: border-color 0.2s;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: #38bdf8;
+    }
+    input[type="file"] {
+      display: none;
+    }
+    .status-list {
+      margin-top: 1.5rem;
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: 0.85rem;
+    }
+    .file-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+      background: #334155;
+      padding: 0.5rem 0.75rem;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Subir imagenes de entrenamiento</h2>
+    <p style="color: #94a3b8; font-size: 0.9rem;">
+      Las imagenes se guardan localmente y luego se procesan en segundo plano.
+    </p>
+
+    <label for="datasetType">Tipo de dataset</label>
+    <select id="datasetType">
+      <option value="plantas">Plantas</option>
+      <option value="radiografias">Radiografias</option>
+    </select>
+
+    <div class="dropzone" id="dropzone">
+      <span>Arrastra tus archivos aqui o haz clic para seleccionar</span>
+      <input type="file" id="fileInput" multiple accept="image/png, image/jpeg, image/webp" />
+    </div>
+
+    <div class="status-list" id="statusList"></div>
+  </div>
+
+  <script>
+    const dropzone = document.getElementById("dropzone");
+    const fileInput = document.getElementById("fileInput");
+    const statusList = document.getElementById("statusList");
+    const datasetType = document.getElementById("datasetType");
+
+    dropzone.onclick = () => fileInput.click();
+
+    dropzone.ondragover = (e) => {
+      e.preventDefault();
+      dropzone.classList.add("dragover");
+    };
+
+    dropzone.ondragleave = () => dropzone.classList.remove("dragover");
+
+    dropzone.ondrop = (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("dragover");
+      if (e.dataTransfer.files.length) {
+        handleFiles(e.dataTransfer.files);
+      }
+    };
+
+    fileInput.onchange = () => {
+      if (fileInput.files.length) {
+        handleFiles(fileInput.files);
+      }
+    };
+
+    async function handleFiles(files) {
+      for (const file of files) {
+        await uploadFile(file);
+      }
+    }
+
+    async function uploadFile(file) {
+      const item = document.createElement("div");
+      item.className = "file-item";
+      item.innerHTML = `<span>${file.name}</span><span id="st-${file.name}">Firmando...</span>`;
+      statusList.prepend(item);
+
+      const statusSpan = item.querySelector(`#st-${CSS.escape(file.name)}`);
+
+      try {
+        const formData = new FormData();
+        formData.append("dataset_type", datasetType.value);
+        formData.append("file", file);
+        const res = await fetch("/api/upload/images", {
+          method: "POST",
+          body: formData
+        });
+
+        if (!res.ok) {
+          const error = await res.json();
+          throw new Error(error.detail || "Error al guardar la imagen");
+        }
+        await res.json();
+        statusSpan.innerText = "Procesando localmente";
+        statusSpan.style.color = "#4ade80";
+      } catch (err) {
+        statusSpan.innerText = "Error";
+        statusSpan.style.color = "#f87171";
+      }
+    }
+  </script>
+</body>
+</html>
