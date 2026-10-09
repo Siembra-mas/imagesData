@@ -34,7 +34,7 @@ ALLOWED_MIME_TYPES = {"image/png", "image/jpeg", "image/webp", *DOCUMENT_MIME_TY
 MIME_TO_FORMAT = {"image/png": "PNG", "image/jpeg": "JPEG", "image/webp": "WEBP"}
 
 # Directorio temporal para ensamblar los fragmentos (chunked uploads)
-TEMP_UPLOAD_DIR = BASE_DIR / "temp_uploads"
+TEMP_UPLOAD_DIR = Path("/tmp/temp_uploads")
 TEMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 def safe_path_segment(value: str) -> str:
