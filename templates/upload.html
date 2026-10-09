@@ -7,9 +7,9 @@
   <div class="section-header">
     <div>
       <p class="eyebrow">Cargador de datasets</p>
-      <h2>Subir imágenes de entrenamiento</h2>
+      <h2>Subir archivos de entrenamiento</h2>
     </div>
-    <span class="status-pill">Formatos: PNG · JPG · WEBP</span>
+    <span class="status-pill">PNG · JPG · WEBP · PDF · DOC · DOCX</span>
   </div>
 
   <div class="meta-grid">
@@ -29,7 +29,7 @@
       <select id="datasetType" required>
         <option value="" selected disabled>Cargando tipos...</option>
       </select>
-      <small class="field-hint">Las imágenes se guardarán dentro de tu carpeta y del tipo seleccionado.</small>
+      <small class="field-hint">Los archivos se guardarán dentro de tu carpeta y del tipo seleccionado.</small>
     </div>
 
     <div class="form-group dataset-type-group">
@@ -41,12 +41,12 @@
 
     <div class="dropzone" id="dropzone">
       <div class="dropzone-icon">⬆</div>
-      <span>Arrastra archivos aquí o haz clic para examinar</span>
-      <input type="file" id="fileInput" multiple accept="image/png, image/jpeg, image/webp" style="display: none;" />
+      <span>Arrastra imágenes o documentos aquí, o haz clic para examinar</span>
+      <input type="file" id="fileInput" multiple accept="image/png, image/jpeg, image/webp, application/pdf, application/msword, application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display: none;" />
     </div>
 
     <button id="btnUpload" class="btn-primary upload-button" style="margin-top: 1.5rem; opacity: 0.5;" disabled onclick="startUpload()">
-      Selecciona imágenes para subir
+      Selecciona archivos para subir
     </button>
 
     <button id="btnDownload" class="btn-secondary upload-button" style="margin-top: 0.75rem; display: none;" disabled onclick="downloadDataset()">
@@ -59,5 +59,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/uploader.js?v=7"></script>
+<script src="/static/js/uploader.js?v=10"></script>
 {% endblock %}

@@ -20,15 +20,16 @@ dataset_catalog_col = db["dataset_catalog"]
 uploads_col = db["uploads"]
 dataset_catalog_col.create_index("dataset_type", unique=True)
 uploads_col.create_index("upload_id", unique=True)
+uploads_col.create_index("client_upload_id", unique=True, sparse=True)
 uploads_col.create_index([("username", 1), ("created_at", -1)])
 
 # Seed idempotente: los administradores pueden editar estos documentos directamente en MongoDB.
 dataset_catalog_col.update_one(
-	{"dataset_type": "plantas"},
+	{"dataset_type": "cultivo"},
 	{
 		"$setOnInsert": {
-			"dataset_type": "plantas",
-			"name": "Plantas",
+			"dataset_type": "cultivo",
+			"name": "Cultivo",
 			"subtypes": ["caña", "maíz"],
 			"is_active": True,
 		}

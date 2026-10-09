@@ -7,17 +7,69 @@
   <div class="section-header">
     <div>
       <p class="eyebrow">Gestión de datasets</p>
-      <h2>Descargar datasets completos</h2>
+      <h2>Seleccionar archivos</h2>
     </div>
     <span class="status-pill">Acceso autorizado</span>
   </div>
 
-  <div id="datasetList" class="dataset-list">
-    <p class="empty-state">Cargando datasets...</p>
+  <div class="download-filters">
+    <div class="filter-field">
+      <label for="datasetFilter">Dataset</label>
+      <select id="datasetFilter">
+        <option value="">Todos los datasets</option>
+      </select>
+    </div>
+    <div class="filter-field">
+      <label for="subtypeFilter">Subtipo</label>
+      <select id="subtypeFilter" disabled>
+        <option value="">Todos los subtipos</option>
+      </select>
+    </div>
+    <div class="filter-field">
+      <label for="fileTypeFilter">Formato</label>
+      <select id="fileTypeFilter">
+        <option value="">Todos</option>
+        <option value="image">Imágenes</option>
+        <option value="document">Documentos</option>
+      </select>
+    </div>
+    <div class="filter-field filter-search">
+      <label for="searchFilter">Buscar archivo</label>
+      <input id="searchFilter" type="search" placeholder="Nombre del archivo" autocomplete="off">
+    </div>
+  </div>
+
+  <div class="download-toolbar">
+    <label class="select-visible">
+      <input id="selectVisible" type="checkbox" aria-label="Seleccionar todos los archivos visibles">
+      Seleccionar visibles
+    </label>
+    <span id="selectionSummary" class="selection-summary" aria-live="polite">0 archivos seleccionados</span>
+    <button id="downloadSelection" class="btn-primary download-selection" type="button" disabled>
+      Descargar selección
+    </button>
+  </div>
+
+  <p id="downloadMessage" class="download-message" role="status" aria-live="polite">Cargando archivos...</p>
+
+  <div class="file-table-wrap">
+    <table class="file-table">
+      <thead>
+        <tr>
+          <th scope="col" class="checkbox-column"></th>
+          <th scope="col">Archivo</th>
+          <th scope="col">Dataset / Subtipo</th>
+          <th scope="col">Formato</th>
+          <th scope="col">Tamaño</th>
+          <th scope="col">Fecha</th>
+        </tr>
+      </thead>
+      <tbody id="fileList"></tbody>
+    </table>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/downloads.js?v=1"></script>
+<script src="/static/js/downloads.js?v=2"></script>
 {% endblock %}

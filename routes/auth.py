@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import bcrypt
 import jwt
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -15,6 +15,9 @@ SECRET_KEY = JWT_SECRET
 ALGORITHM = "HS256"
 COOKIE_NAME = "session_token"
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() in {"1", "true", "yes", "on"}
+SESSION_IDLE_TIMEOUT_SECONDS = int(os.getenv("SESSION_IDLE_TIMEOUT_SECONDS", "3600"))
+if SESSION_IDLE_TIMEOUT_SECONDS <= 0:
+    raise RuntimeError("SESSION_IDLE_TIMEOUT_SECONDS debe ser mayor que cero.")
 ROLE_UPLOADER = "uploader"
 ROLE_DATASET_MANAGER = "dataset_manager"
 
@@ -22,12 +25,24 @@ class AuthSchema(BaseModel):
     username: str = Field(..., min_length=3, max_length=30)
     password: str = Field(..., min_length=6)
 
+
+def decode_session_token(token: str) -> dict:
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    issued_at = payload.get("iat")
+    expires_at = payload.get("exp")
+    if not isinstance(issued_at, (int, float)) or not isinstance(expires_at, (int, float)):
+        raise jwt.InvalidTokenError("La sesión no contiene tiempos válidos.")
+    if expires_at - issued_at > SESSION_IDLE_TIMEOUT_SECONDS:
+        raise jwt.InvalidTokenError("La duración máxima de la sesión fue excedida.")
+    return payload
+
+
 def get_current_user_or_none(request: Request) -> str | None:
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         return None
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = decode_session_token(token)
         username = payload.get("sub")
         if not username or not users_col.find_one({"username": username, "is_active": True}):
             return None
@@ -41,7 +56,7 @@ def get_current_user(request: Request) -> dict:
     if not token:
         raise HTTPException(status_code=401, detail="No autenticado.")
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = decode_session_token(token)
         username = payload.get("sub")
         user = users_col.find_one({"username": username, "is_active": True})
         if not user:
@@ -85,9 +100,14 @@ def login(data: AuthSchema, response: Response):
     if user.get("is_active") is not True:
         raise HTTPException(status_code=403, detail="Tu cuenta aún no ha sido autorizada.")
 
-    expire = datetime.utcnow() + timedelta(hours=12)
+    issued_at = datetime.now(timezone.utc)
+    expire = issued_at + timedelta(seconds=SESSION_IDLE_TIMEOUT_SECONDS)
     role = user.get("role", ROLE_UPLOADER)
-    token = jwt.encode({"sub": user["username"], "role": role, "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
+    token = jwt.encode(
+        {"sub": user["username"], "role": role, "iat": issued_at, "exp": expire},
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
 
     response.set_cookie(
         key=COOKIE_NAME,
@@ -95,7 +115,7 @@ def login(data: AuthSchema, response: Response):
         httponly=True,
         samesite="lax",
         secure=COOKIE_SECURE,
-        max_age=12 * 60 * 60,
+        max_age=SESSION_IDLE_TIMEOUT_SECONDS,
     )
     return {"message": "Sesión iniciada.", "role": role}
 
@@ -109,3 +129,25 @@ def logout(response: Response):
 def current_session(request: Request):
     user = get_current_user(request)
     return {"username": user["username"], "role": user.get("role", ROLE_UPLOADER)}
+
+
+@auth_router.post("/refresh")
+def refresh_session(request: Request, response: Response):
+    user = get_current_user(request)
+    role = user.get("role", ROLE_UPLOADER)
+    issued_at = datetime.now(timezone.utc)
+    expire = issued_at + timedelta(seconds=SESSION_IDLE_TIMEOUT_SECONDS)
+    token = jwt.encode(
+        {"sub": user["username"], "role": role, "iat": issued_at, "exp": expire},
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=COOKIE_SECURE,
+        max_age=SESSION_IDLE_TIMEOUT_SECONDS,
+    )
+    return {"message": "Sesión renovada."}

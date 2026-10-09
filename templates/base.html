@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/styles.css?v=2">
+  <link rel="stylesheet" href="/static/css/styles.css?v=4">
 </head>
 <body>
 
@@ -27,7 +27,11 @@
     <div class="user-menu">
       {% if user %}
         {% if role == "dataset_manager" %}
-          <a class="nav-link" href="/downloads">Descargar datasets</a>
+          {% if request.url.path == "/downloads" %}
+            <a class="nav-link" href="/">Volver al cargador</a>
+          {% else %}
+            <a class="nav-link" href="/downloads">Descargar archivos</a>
+          {% endif %}
         {% endif %}
         <span class="user-badge">
           <span class="status-dot"></span>
@@ -49,7 +53,7 @@
   </footer>
 
   <!-- Scripts -->
-  <script src="/static/js/auth.js"></script>
+  <script src="/static/js/auth.js?v=2"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

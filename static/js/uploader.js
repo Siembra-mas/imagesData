@@ -78,13 +78,16 @@ function populateSubtypes() {
 }
 
 function queueFiles(files) {
-  const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
-  const allowedExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
+  const allowedExtensions = ['.png', '.jpg', '.jpeg', '.webp', '.pdf', '.doc', '.docx'];
 
   for (const file of files) {
     const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-    if (!allowedTypes.includes(file.type) || !allowedExtensions.includes(extension)) {
-      addStatus(file.name, "Rechazado: formato no válido", "#f87171");
+    if (file.size === 0) {
+      addStatus(file.name, "Rechazado: archivo vacío", "#f87171");
+      continue;
+    }
+    if (!allowedExtensions.includes(extension)) {
+      addStatus(file.name, "Rechazado: formato no admitido", "#f87171");
       continue;
     }
     if (!selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
@@ -103,12 +106,12 @@ function updateUploadButton() {
   btnUpload.disabled = !canUpload;
   btnUpload.style.opacity = canUpload ? "1" : "0.5";
   btnUpload.innerText = canUpload
-    ? `Enviar ${selectedFiles.length} imagen(es)`
+    ? `Enviar ${selectedFiles.length} archivo(s)`
     : !datasetType?.value
       ? "Selecciona el tipo de dataset"
       : !datasetSubtype?.value
         ? "Selecciona el subtipo"
-        : "Selecciona imágenes para subir";
+        : "Selecciona archivos para subir";
 }
 
 function updateDownloadButton() {
@@ -131,7 +134,12 @@ function addStatus(name, text, color) {
     item = document.createElement("div");
     item.className = "file-item";
     item.id = id + "-container";
-    item.innerHTML = `<span>${name}</span><span id="${id}">${text}</span>`;
+    const filename = document.createElement("span");
+    filename.textContent = name;
+    const status = document.createElement("span");
+    status.id = id;
+    status.textContent = text;
+    item.append(filename, status);
     statusList.prepend(item);
   } else {
     document.getElementById(id).innerText = text;
@@ -145,7 +153,7 @@ async function startUpload() {
 
   btnUpload.disabled = true;
   btnUpload.style.opacity = "0.5";
-  btnUpload.innerText = "Subiendo imágenes...";
+  btnUpload.innerText = "Subiendo archivos...";
 
   const queue = [...selectedFiles];
   selectedFiles = [];
@@ -156,29 +164,61 @@ async function startUpload() {
 
   btnUpload.innerText = "Carga finalizada";
   setTimeout(() => {
-    btnUpload.innerText = "Selecciona imágenes para subir";
+    btnUpload.innerText = "Selecciona archivos para subir";
   }, 2500);
 }
 
 async function uploadSingleFile(file) {
-  addStatus(file.name, "Validando y subiendo...", "#38bdf8");
+  addStatus(file.name, "Iniciando carga fragmentada...", "#38bdf8");
+
+  const chunkSize = 10 * 1024 * 1024; // 10MB por petición
+  const totalChunks = Math.ceil(file.size / chunkSize);
+  const uploadId = crypto.randomUUID();
 
   try {
-    const formData = new FormData();
-    formData.append("dataset_type", datasetType.value);
-    formData.append("subtype", datasetSubtype.value);
-    formData.append("file", file);
-    const res = await fetch("/api/upload/images", {
-      method: "POST",
-      body: formData
-    });
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+      const chunk = file.slice(start, end);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", await chunk.arrayBuffer());
+      const chunkSha256 = Array.from(new Uint8Array(hashBuffer), byte => byte.toString(16).padStart(2, "0")).join("");
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Error al firmar");
+      const formData = new FormData();
+      formData.append("dataset_type", datasetType.value);
+      formData.append("subtype", datasetSubtype.value);
+      formData.append("filename", file.name);
+      formData.append("upload_id", uploadId);
+      formData.append("chunk_index", i);
+      formData.append("total_chunks", totalChunks);
+      formData.append("chunk_sha256", chunkSha256);
+      formData.append("file", chunk);
+
+      let uploaded = false;
+      for (let attempt = 1; attempt <= 3 && !uploaded; attempt++) {
+        addStatus(file.name, `Subiendo parte ${i + 1} de ${totalChunks}${attempt > 1 ? ` (intento ${attempt})` : ""}...`, "#facc15");
+
+        try {
+          const res = await fetch("/api/upload/files", {
+            method: "POST",
+            body: formData
+          });
+
+          if (res.ok) {
+            uploaded = true;
+            continue;
+          }
+
+          const err = await res.json().catch(() => ({}));
+          const message = err.detail || `Error en el fragmento ${i + 1}`;
+          if (res.status < 500 && res.status !== 429) throw new Error(message);
+          if (attempt === 3) throw new Error(message);
+        } catch (error) {
+          if (error instanceof TypeError && attempt < 3) continue;
+          if (attempt === 3 || !(error instanceof TypeError)) throw error;
+        }
+      }
     }
 
-    await res.json();
     addStatus(file.name, "Procesando en segundo plano", "#4ade80");
 
   } catch (err) {

@@ -1,6 +1,33 @@
 
 let isRegisterMode = false;
 
+const userBadge = document.querySelector(".user-badge");
+if (userBadge) {
+  let lastActivityAt = Date.now();
+  let refreshInProgress = false;
+
+  for (const eventName of ["pointermove", "pointerdown", "keydown", "touchstart", "scroll"]) {
+    document.addEventListener(eventName, () => {
+      lastActivityAt = Date.now();
+    }, { passive: true });
+  }
+
+  window.setInterval(async () => {
+    const activityWasRecent = Date.now() - lastActivityAt < 5 * 60 * 1000;
+    if (!activityWasRecent || refreshInProgress) return;
+
+    refreshInProgress = true;
+    try {
+      const response = await fetch("/api/auth/refresh", { method: "POST" });
+      if (response.status === 401) window.location.assign("/login");
+    } catch (error) {
+      console.error("No se pudo renovar la sesión", error);
+    } finally {
+      refreshInProgress = false;
+    }
+  }, 5 * 60 * 1000);
+}
+
 function toggleAuthMode() {
   isRegisterMode = !isRegisterMode;
   document.getElementById("title").innerText = isRegisterMode ? "Crear Cuenta" : "Iniciar Sesión";

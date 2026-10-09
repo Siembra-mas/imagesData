@@ -2,9 +2,13 @@ fastapi
 uvicorn
 python-dotenv
 pydantic
+pydantic-settings
 pymongo
 bcrypt
 PyJWT
+cryptography
 Pillow
 python-multipart
 minio
+jinja2
+aiofiles
