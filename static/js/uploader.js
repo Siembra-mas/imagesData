@@ -78,7 +78,7 @@ function populateSubtypes() {
 }
 
 function queueFiles(files) {
-  const allowedExtensions = ['.png', '.jpg', '.jpeg', '.webp', '.pdf', '.doc', '.docx'];
+  const allowedExtensions = ['.png', '.jpg', '.jpeg', '.webp', '.pdf', '.doc', '.docx', '.zip', '.rar'];
 
   for (const file of files) {
     const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
@@ -158,30 +158,49 @@ async function startUpload() {
   const queue = [...selectedFiles];
   selectedFiles = [];
 
-  for (const file of queue) {
-    await uploadSingleFile(file);
+  try {
+    for (const file of queue) {
+      await uploadSingleFile(file);
+    }
+  } catch (error) {
+    console.error("Error inesperado durante la carga", error);
+  } finally {
+    btnUpload.innerText = "Carga finalizada";
+    window.setTimeout(updateUploadButton, 2500);
+  }
+}
+
+function createUploadId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  if (!globalThis.crypto?.getRandomValues) {
+    throw new Error("El navegador no permite iniciar una carga segura. Abre la aplicación con HTTPS.");
   }
 
-  btnUpload.innerText = "Carga finalizada";
-  setTimeout(() => {
-    btnUpload.innerText = "Selecciona archivos para subir";
-  }, 2500);
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 async function uploadSingleFile(file) {
   addStatus(file.name, "Iniciando carga fragmentada...", "#38bdf8");
 
-  const chunkSize = 10 * 1024 * 1024; // 10MB por petición
-  const totalChunks = Math.ceil(file.size / chunkSize);
-  const uploadId = crypto.randomUUID();
-
   try {
+    const chunkSize = 10 * 1024 * 1024; // 10MB por petición
+    const totalChunks = Math.ceil(file.size / chunkSize);
+    const uploadId = createUploadId();
+    let processingUploadId = null;
+
     for (let i = 0; i < totalChunks; i++) {
       const start = i * chunkSize;
       const end = Math.min(start + chunkSize, file.size);
       const chunk = file.slice(start, end);
-      const hashBuffer = await crypto.subtle.digest("SHA-256", await chunk.arrayBuffer());
-      const chunkSha256 = Array.from(new Uint8Array(hashBuffer), byte => byte.toString(16).padStart(2, "0")).join("");
+      let chunkSha256 = null;
+      if (globalThis.crypto?.subtle) {
+        const hashBuffer = await globalThis.crypto.subtle.digest("SHA-256", await chunk.arrayBuffer());
+        chunkSha256 = Array.from(new Uint8Array(hashBuffer), byte => byte.toString(16).padStart(2, "0")).join("");
+      }
 
       const formData = new FormData();
       formData.append("dataset_type", datasetType.value);
@@ -190,7 +209,7 @@ async function uploadSingleFile(file) {
       formData.append("upload_id", uploadId);
       formData.append("chunk_index", i);
       formData.append("total_chunks", totalChunks);
-      formData.append("chunk_sha256", chunkSha256);
+      if (chunkSha256) formData.append("chunk_sha256", chunkSha256);
       formData.append("file", chunk);
 
       let uploaded = false;
@@ -204,6 +223,8 @@ async function uploadSingleFile(file) {
           });
 
           if (res.ok) {
+            const result = await res.json().catch(() => ({}));
+            if (i === totalChunks - 1) processingUploadId = result.upload_id || null;
             uploaded = true;
             continue;
           }
@@ -211,17 +232,72 @@ async function uploadSingleFile(file) {
           const err = await res.json().catch(() => ({}));
           const message = err.detail || `Error en el fragmento ${i + 1}`;
           if (res.status < 500 && res.status !== 429) throw new Error(message);
-          if (attempt === 3) throw new Error(message);
+          if (attempt === 3) throw new Error(`El servidor rechazó la parte ${i + 1}: ${message}`);
         } catch (error) {
-          if (error instanceof TypeError && attempt < 3) continue;
-          if (attempt === 3 || !(error instanceof TypeError)) throw error;
+          if (!(error instanceof TypeError)) throw error;
+          if (attempt === 3) {
+            throw new Error(`No se pudo enviar la parte ${i + 1} de ${totalChunks}. Revisa la conexión y vuelve a intentarlo.`);
+          }
+          addStatus(file.name, `Conexión interrumpida; reintentando parte ${i + 1}...`, "#b45309");
+          await new Promise(resolve => window.setTimeout(resolve, attempt * 1500));
         }
       }
     }
 
-    addStatus(file.name, "Procesando en segundo plano", "#4ade80");
+    if (!processingUploadId) {
+      throw new Error("El servidor no confirmó el procesamiento del archivo.");
+    }
+
+    await waitForUploadResult(file, processingUploadId);
 
   } catch (err) {
     addStatus(file.name, err.message, "#f87171");
   }
+}
+
+async function waitForUploadResult(file, uploadId) {
+  const startedAt = Date.now();
+  let delay = 1500;
+  let connectionFailures = 0;
+
+  while (Date.now() - startedAt < 30 * 60 * 1000) {
+    addStatus(file.name, "Guardando en almacenamiento...", "#2563eb");
+    await new Promise(resolve => window.setTimeout(resolve, delay));
+
+    let response;
+    try {
+      response = await fetch(`/api/upload/status/${encodeURIComponent(uploadId)}`);
+      connectionFailures = 0;
+    } catch (error) {
+      connectionFailures += 1;
+      addStatus(file.name, `Sin conexión para consultar el resultado; reintentando (${connectionFailures})...`, "#b45309");
+      delay = Math.min(delay * 1.5, 10000);
+      continue;
+    }
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error("La sesión terminó antes de confirmar el guardado. Inicia sesión y consulta con el administrador.");
+      }
+      if (response.status >= 500 || response.status === 429) {
+        addStatus(file.name, "El servidor no pudo consultar el resultado; reintentando...", "#b45309");
+        delay = Math.min(delay * 1.5, 10000);
+        continue;
+      }
+      throw new Error(`No se pudo consultar el estado del archivo (HTTP ${response.status}).`);
+    }
+
+    const result = await response.json();
+    if (result.status === "completed") {
+      addStatus(file.name, "Listo: archivo guardado", "#059669");
+      return;
+    }
+    if (result.status === "failed") {
+      throw new Error(result.message || "No se pudo guardar el archivo.");
+    }
+
+    delay = Math.min(delay * 1.5, 10000);
+  }
+
+  addStatus(file.name, "Carga recibida; no se pudo confirmar el guardado. Revisa la conexión e inténtalo más tarde.", "#b45309");
 }

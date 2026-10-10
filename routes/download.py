@@ -1,26 +1,22 @@
-import io
-import os
+import logging
 import re
-import tempfile
-import time
-import uuid
-import zipfile
 from datetime import datetime
 from pathlib import Path
+from collections.abc import Iterable, Iterator
 
-from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import APIRouter, Form, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from minio import Minio
-from pydantic import BaseModel
-from starlette.background import BackgroundTask
+from zipstream import ZIP_DEFLATED, ZipStream
 
 from config import MINIO_ACCESS_KEY, MINIO_BUCKET, MINIO_ENDPOINT, MINIO_SECRET_KEY
 from database import dataset_catalog_col, uploads_col
 from routes.auth import ROLE_DATASET_MANAGER, require_role
 
+logger = logging.getLogger(__name__)
+
 download_router = APIRouter(prefix="/api/download", tags=["download"])
-TEMP_DOWNLOAD_DIR = Path(tempfile.gettempdir()) / "dataset-uploader-downloads"
-TEMP_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+CHUNK_SIZE = 1024 * 1024
 
 minio_client = Minio(
     MINIO_ENDPOINT,
@@ -34,22 +30,33 @@ def safe_name(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]", "_", value).strip("._") or "dataset"
 
 
-class DownloadSelection(BaseModel):
-    upload_ids: list[str]
+def minio_object_chunks(object_name: str) -> Iterator[bytes]:
+    response = None
+    try:
+        response = minio_client.get_object(MINIO_BUCKET, object_name)
+        while chunk := response.read(CHUNK_SIZE):
+            yield chunk
+    except Exception:
+        logger.exception("Error transmitiendo objeto MinIO %s", object_name)
+        raise
+    finally:
+        if response is not None:
+            try:
+                response.close()
+            finally:
+                response.release_conn()
 
 
-def remove_archive(path: str) -> None:
-    Path(path).unlink(missing_ok=True)
+def stream_zip(entries: Iterable[tuple[str, str]], filename: str) -> StreamingResponse:
+    archive = ZipStream(compress_type=ZIP_DEFLATED)
+    for object_name, archive_name in entries:
+        archive.add(minio_object_chunks(object_name), archive_name)
 
-
-def cleanup_expired_archives() -> None:
-    expiration_time = time.time() - 24 * 60 * 60
-    for path in TEMP_DOWNLOAD_DIR.glob("*.zip"):
-        try:
-            if path.stat().st_mtime < expiration_time:
-                path.unlink(missing_ok=True)
-        except OSError:
-            continue
+    return StreamingResponse(
+        archive,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @download_router.get("/files")
@@ -110,10 +117,9 @@ def list_download_files(
 
 
 @download_router.post("/selection")
-def prepare_selection_download(selection: DownloadSelection, request: Request):
+def download_selection(request: Request, upload_ids: list[str] = Form(...)):
     require_role(request, ROLE_DATASET_MANAGER)
-    cleanup_expired_archives()
-    upload_ids = list(dict.fromkeys(selection.upload_ids))
+    upload_ids = list(dict.fromkeys(upload_ids))
     if not upload_ids or len(upload_ids) > 250:
         raise HTTPException(status_code=400, detail="Selecciona entre 1 y 250 archivos.")
 
@@ -126,53 +132,19 @@ def prepare_selection_download(selection: DownloadSelection, request: Request):
     if len(records_by_id) != len(upload_ids):
         raise HTTPException(status_code=404, detail="Uno o más archivos no están disponibles para descargar.")
 
-    archive_id = uuid.uuid4().hex
-    archive_path = TEMP_DOWNLOAD_DIR / f"{archive_id}.zip"
-    try:
-        with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
-            for upload_id in upload_ids:
-                record = records_by_id[upload_id]
-                response = minio_client.get_object(MINIO_BUCKET, record["storage_key"])
-                original_filename = record.get("original_filename", "archivo").replace("\\", "/")
-                archive_name = (
-                    f"{safe_name(record.get('dataset_type', 'dataset'))}/"
-                    f"{safe_name(record.get('subtype', 'sin_subtipo'))}/"
-                    f"{upload_id}_{Path(original_filename).name}"
-                )
-                try:
-                    with archive.open(archive_name, "w") as archive_file:
-                        while chunk := response.read(1024 * 1024):
-                            archive_file.write(chunk)
-                finally:
-                    response.close()
-                    response.release_conn()
-    except Exception as error:
-        remove_archive(str(archive_path))
-        print(f"[-] Error creando ZIP seleccionado: {error}")
-        raise HTTPException(status_code=503, detail="No se pudo preparar la descarga. Verifica que MinIO esté disponible.")
-
-    return {"download_url": f"/api/download/selection/{archive_id}"}
-
-
-@download_router.get("/selection/{archive_id}")
-def download_selection(archive_id: str, request: Request):
-    require_role(request, ROLE_DATASET_MANAGER)
-    try:
-        archive_id = uuid.UUID(hex=archive_id).hex
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Descarga no encontrada.")
-
-    archive_path = TEMP_DOWNLOAD_DIR / f"{archive_id}.zip"
-    if not archive_path.is_file():
-        raise HTTPException(status_code=404, detail="La descarga expiró o no existe.")
+    entries = []
+    for upload_id in upload_ids:
+        record = records_by_id[upload_id]
+        original_filename = record.get("original_filename", "archivo").replace("\\", "/")
+        archive_name = (
+            f"{safe_name(record.get('dataset_type', 'dataset'))}/"
+            f"{safe_name(record.get('subtype', 'sin_subtipo'))}/"
+            f"{upload_id}_{Path(original_filename).name}"
+        )
+        entries.append((record["storage_key"], archive_name))
 
     filename = f"seleccion-{datetime.utcnow():%Y%m%d-%H%M%S}.zip"
-    return FileResponse(
-        archive_path,
-        media_type="application/zip",
-        filename=filename,
-        background=BackgroundTask(remove_archive, str(archive_path)),
-    )
+    return stream_zip(entries, filename)
 
 
 @download_router.get("/datasets/{dataset_type}")
@@ -182,35 +154,22 @@ def download_dataset(dataset_type: str, request: Request):
     if not config:
         raise HTTPException(status_code=404, detail="Dataset no encontrado.")
 
-    archive = io.BytesIO()
-    object_count = 0
     try:
-        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for item in minio_client.list_objects(MINIO_BUCKET, recursive=True):
-                path_parts = item.object_name.split("/")
-                if len(path_parts) < 4 or path_parts[1] != dataset_type:
-                    continue
-                response = minio_client.get_object(MINIO_BUCKET, item.object_name)
-                try:
-                    zip_file.writestr(item.object_name, response.read())
-                    object_count += 1
-                finally:
-                    response.close()
-                    response.release_conn()
+        objects = [
+            item.object_name
+            for item in minio_client.list_objects(MINIO_BUCKET, recursive=True)
+            if len(item.object_name.split("/")) >= 4 and item.object_name.split("/")[1] == dataset_type
+        ]
     except Exception as error:
-        print(f"[-] Error leyendo MinIO ({MINIO_ENDPOINT}/{MINIO_BUCKET}): {error}")
+        logger.exception("Error listando objetos de MinIO para dataset %s", dataset_type)
         raise HTTPException(
             status_code=503,
             detail="MinIO no está disponible. Ejecuta la API dentro de Docker Compose.",
-        )
+        ) from error
 
-    if object_count == 0:
+    if not objects:
         raise HTTPException(status_code=404, detail="El dataset no contiene archivos.")
 
-    archive.seek(0)
+    entries = ((object_name, object_name) for object_name in objects)
     filename = f"{safe_name(dataset_type)}-completo.zip"
-    return StreamingResponse(
-        archive,
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return stream_zip(entries, filename)

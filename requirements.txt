@@ -12,3 +12,4 @@ python-multipart
 minio
 jinja2
 aiofiles
+zipstream-ng

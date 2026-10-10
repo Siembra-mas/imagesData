@@ -19,7 +19,7 @@ from sync_worker import process_uploaded_document, process_uploaded_image
 uploader_router = APIRouter(prefix="/api/upload", tags=["uploader"])
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(1024 * 1024 * 1024)))
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))
 MAX_CHUNK_BYTES = 10 * 1024 * 1024
 if MAX_UPLOAD_BYTES <= 0:
     raise RuntimeError("MAX_UPLOAD_BYTES debe ser mayor que cero.")
@@ -28,6 +28,8 @@ DOCUMENT_MIME_TYPES = {
     ".pdf": "application/pdf",
     ".doc": "application/msword",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".zip": "application/zip",
+    ".rar": "application/vnd.rar",
 }
 ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | set(DOCUMENT_MIME_TYPES)
 ALLOWED_MIME_TYPES = {"image/png", "image/jpeg", "image/webp", *DOCUMENT_MIME_TYPES.values()}
@@ -42,7 +44,7 @@ def safe_path_segment(value: str) -> str:
 
 def validate_uploaded_file(file_path: Path, content_type: str, extension: str) -> None:
     if content_type not in ALLOWED_MIME_TYPES or extension not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Formato no permitido. Usa imágenes PNG/JPG/WEBP o documentos PDF/DOC/DOCX.")
+        raise HTTPException(status_code=400, detail="Formato no permitido. Usa PNG/JPG/WEBP, PDF/DOC/DOCX o ZIP/RAR.")
 
     if extension in IMAGE_EXTENSIONS:
         try:
@@ -67,6 +69,10 @@ def validate_uploaded_file(file_path: Path, content_type: str, extension: str) -
                 names = set(document.namelist())
                 if "[Content_Types].xml" not in names or "word/document.xml" not in names:
                     raise HTTPException(status_code=400, detail="El archivo no contiene un documento DOCX válido.")
+        if extension == ".zip" and not zipfile.is_zipfile(file_path):
+            raise HTTPException(status_code=400, detail="El archivo no contiene un ZIP válido.")
+        if extension == ".rar" and not header.startswith((b"Rar!\x1a\x07\x00", b"Rar!\x1a\x07\x01\x00")):
+            raise HTTPException(status_code=400, detail="El archivo no contiene un RAR válido.")
     except (OSError, zipfile.BadZipFile):
         raise HTTPException(status_code=400, detail="El archivo de documento está dañado o no es válido.")
 
@@ -89,6 +95,26 @@ def get_catalog(request: Request):
     catalog = dataset_catalog_col.find({"is_active": True}, {"_id": 0, "dataset_type": 1, "name": 1, "subtypes": 1})
     return {"datasets": list(catalog)}
 
+
+@uploader_router.get("/status/{upload_id}")
+def get_upload_status(upload_id: str, request: Request):
+    user = require_role(request, ROLE_UPLOADER, ROLE_DATASET_MANAGER)
+    upload = uploads_col.find_one({"upload_id": upload_id})
+    if not upload:
+        raise HTTPException(status_code=404, detail="Carga no encontrada.")
+
+    is_manager = user.get("role") == ROLE_DATASET_MANAGER
+    if upload.get("username") != user["username"] and not is_manager:
+        raise HTTPException(status_code=404, detail="Carga no encontrada.")
+
+    status_message = {
+        "pending": "El archivo se está guardando.",
+        "completed": "Archivo guardado correctamente.",
+        "failed": "No se pudo guardar el archivo. Inténtalo de nuevo o contacta al administrador.",
+    }.get(upload.get("status"), "Estado de carga desconocido.")
+    return {"status": upload.get("status", "unknown"), "message": status_message}
+
+
 @uploader_router.post("/files", status_code=202)
 @uploader_router.post("/images", status_code=202, include_in_schema=False)
 async def upload_file(
@@ -100,7 +126,7 @@ async def upload_file(
     upload_id: str = Form(...),
     chunk_index: int = Form(...),
     total_chunks: int = Form(...),
-    chunk_sha256: str = Form(...),
+    chunk_sha256: str | None = Form(default=None),
     file: UploadFile = File(...),
 ):
     user = require_role(request, ROLE_UPLOADER, ROLE_DATASET_MANAGER)
@@ -116,7 +142,7 @@ async def upload_file(
     else:
         content_type_guess = "image/jpeg" if extension in {".jpg", ".jpeg"} else f"image/{extension.lstrip('.')}"
     if extension not in ALLOWED_EXTENSIONS or content_type_guess not in ALLOWED_MIME_TYPES:
-        raise HTTPException(status_code=400, detail="Formato no permitido. Usa imágenes PNG/JPG/WEBP o documentos PDF/DOC/DOCX.")
+        raise HTTPException(status_code=400, detail="Formato no permitido. Usa PNG/JPG/WEBP, PDF/DOC/DOCX o ZIP/RAR.")
     if len(filename) > 255:
         raise HTTPException(status_code=400, detail="El nombre del archivo es demasiado largo.")
 
@@ -129,7 +155,7 @@ async def upload_file(
         raise HTTPException(status_code=400, detail="Cantidad de fragmentos inválida.")
     if chunk_index < 0 or chunk_index >= total_chunks:
         raise HTTPException(status_code=400, detail="Índice de fragmento inválido.")
-    if not re.fullmatch(r"[a-fA-F0-9]{64}", chunk_sha256):
+    if chunk_sha256 is not None and not re.fullmatch(r"[a-fA-F0-9]{64}", chunk_sha256):
         raise HTTPException(status_code=400, detail="Hash del fragmento inválido.")
 
     existing_upload = uploads_col.find_one({"client_upload_id": normalized_upload_id, "username": username})
@@ -142,7 +168,7 @@ async def upload_file(
     if len(chunk_data) > MAX_CHUNK_BYTES:
         raise HTTPException(status_code=413, detail="El fragmento supera el máximo de 10 MB.")
     actual_chunk_hash = hashlib.sha256(chunk_data).hexdigest()
-    if actual_chunk_hash.lower() != chunk_sha256.lower():
+    if chunk_sha256 is not None and actual_chunk_hash.lower() != chunk_sha256.lower():
         raise HTTPException(status_code=400, detail="El hash del fragmento no coincide.")
 
     upload_dir = TEMP_UPLOAD_DIR / normalized_upload_id

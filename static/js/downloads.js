@@ -171,24 +171,36 @@ function updateSelectionSummary() {
   downloadSelection.disabled = selectedIds.size === 0;
 }
 
-async function startSelectionDownload() {
-  downloadSelection.disabled = true;
-  setMessage("Preparando ZIP seleccionado...");
-  try {
-    const response = await fetch("/api/download/selection", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ upload_ids: [...selectedIds] }),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.detail || "No se pudo preparar la descarga.");
-
-    setMessage("ZIP listo; iniciando descarga.");
-    window.location.assign(result.download_url);
-  } catch (error) {
-    setMessage(error.message, true);
-    downloadSelection.disabled = false;
+function startSelectionDownload() {
+  if (selectedIds.size === 0) return;
+  if (selectedIds.size > 250) {
+    setMessage("Puedes descargar hasta 250 archivos por selección.", true);
+    return;
   }
+
+  downloadSelection.disabled = true;
+  setMessage("Iniciando descarga del ZIP seleccionado...");
+
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = "/api/download/selection";
+  form.hidden = true;
+
+  for (const uploadId of selectedIds) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "upload_ids";
+    input.value = uploadId;
+    form.appendChild(input);
+  }
+
+  document.body.appendChild(form);
+  form.submit();
+  form.remove();
+  window.setTimeout(() => {
+    downloadSelection.disabled = selectedIds.size === 0;
+    setMessage("Si la descarga no comenzó, revisa tu conexión e inténtalo de nuevo.");
+  }, 5000);
 }
 
 function formatBytes(value) {
