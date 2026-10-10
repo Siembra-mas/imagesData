@@ -8,6 +8,7 @@ const datasetSubtype = document.getElementById("datasetSubtype");
 
 let selectedFiles = [];
 let datasetCatalog = [];
+let maxUploadBytes = 2 * 1024 * 1024 * 1024;
 
 if (dropzone && fileInput) {
   dropzone.onclick = () => fileInput.click();
@@ -52,7 +53,9 @@ async function loadDatasetCatalog() {
   try {
     const response = await fetch("/api/upload/catalog");
     if (!response.ok) throw new Error("No se pudo cargar el catálogo");
-    datasetCatalog = (await response.json()).datasets || [];
+    const catalogData = await response.json();
+    datasetCatalog = catalogData.datasets || [];
+    maxUploadBytes = catalogData.max_upload_bytes || maxUploadBytes;
     datasetType.innerHTML = '<option value="" selected disabled>Selecciona un tipo</option>';
     for (const dataset of datasetCatalog) {
       const option = document.createElement("option");
@@ -84,6 +87,11 @@ function queueFiles(files) {
     const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
     if (file.size === 0) {
       addStatus(file.name, "Rechazado: archivo vacío", "#f87171");
+      continue;
+    }
+    if (file.size > maxUploadBytes) {
+      const limitGiB = maxUploadBytes / (1024 ** 3);
+      addStatus(file.name, `Rechazado: supera el límite de ${limitGiB.toLocaleString("es")} GiB`, "#f87171");
       continue;
     }
     if (!allowedExtensions.includes(extension)) {
@@ -189,6 +197,9 @@ async function uploadSingleFile(file) {
   try {
     const chunkSize = 10 * 1024 * 1024; // 10MB por petición
     const totalChunks = Math.ceil(file.size / chunkSize);
+    if (totalChunks < 1) {
+      throw new Error("El archivo está vacío; selecciona un archivo con contenido.");
+    }
     const uploadId = createUploadId();
     let processingUploadId = null;
 

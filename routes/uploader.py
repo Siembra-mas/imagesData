@@ -93,7 +93,7 @@ def get_catalog(request: Request):
     if not get_current_user_or_none(request):
         raise HTTPException(status_code=401, detail="No autenticado o cuenta inactiva.")
     catalog = dataset_catalog_col.find({"is_active": True}, {"_id": 0, "dataset_type": 1, "name": 1, "subtypes": 1})
-    return {"datasets": list(catalog)}
+    return {"datasets": list(catalog), "max_upload_bytes": MAX_UPLOAD_BYTES}
 
 
 @uploader_router.get("/status/{upload_id}")
@@ -151,8 +151,18 @@ async def upload_file(
     except ValueError:
         raise HTTPException(status_code=400, detail="Identificador de carga inválido.")
 
-    if total_chunks < 1 or total_chunks > (MAX_UPLOAD_BYTES + MAX_CHUNK_BYTES - 1) // MAX_CHUNK_BYTES:
-        raise HTTPException(status_code=400, detail="Cantidad de fragmentos inválida.")
+    if total_chunks < 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Se recibieron {total_chunks} fragmentos; el archivo debe producir al menos uno.",
+        )
+    max_chunks = (MAX_UPLOAD_BYTES + MAX_CHUNK_BYTES - 1) // MAX_CHUNK_BYTES
+    if total_chunks > max_chunks:
+        max_size_gib = MAX_UPLOAD_BYTES / (1024 ** 3)
+        raise HTTPException(
+            status_code=413,
+            detail=f"El archivo supera el límite máximo de {max_size_gib:g} GiB.",
+        )
     if chunk_index < 0 or chunk_index >= total_chunks:
         raise HTTPException(status_code=400, detail="Índice de fragmento inválido.")
     if chunk_sha256 is not None and not re.fullmatch(r"[a-fA-F0-9]{64}", chunk_sha256):
